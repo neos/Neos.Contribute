@@ -6,7 +6,11 @@ namespace Neos\Contribute\Command;
  *                                                                        *
  *                                                                        */
 
+use Github\Client as GitHubClient;
+use Github\Exception\RuntimeException;
 use TYPO3\Flow\Annotations as Flow;
+use TYPO3\Flow\Configuration\ConfigurationManager;
+use TYPO3\Flow\Utility\Arrays;
 use TYPO3\Flow\Utility\Files;
 
 /**
@@ -15,10 +19,20 @@ use TYPO3\Flow\Utility\Files;
 class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 
 	/**
+	 * @var \TYPO3\Flow\Configuration\Source\YamlSource
+	 * @Flow\Inject
+	 */
+	protected $configurationSource;
+
+	/**
+	 @Flow\Inject(setting="gitHub")
+	 */
+	protected $gitHubSettings;
+
+	/**
 	 * @var string
 	 */
 	protected $gerritApiPattern = 'https://review.typo3.org/changes/%s/%s';
-
 
 	/**
 	 * @Flow\inject
@@ -26,12 +40,43 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	 */
 	protected $environment;
 
-
 	/**
 	 * @Flow\inject
 	 * @var \TYPO3\Flow\Package\PackageManagerInterface
 	 */
 	protected $packageManager;
+
+
+	/**
+	 * @var GitHubClient
+	 */
+	protected $gitHubClient;
+
+
+	public function initializeObject() {
+		$this->gitHubClient = new GithubClient();
+	}
+
+
+	public function getStartedCommand() {
+
+		$this->output("
+<b>Welcome To Flow / Neos Development</b>
+This wizzard gets your environemnt up and running to easily contribute
+code or documentation to the Neos project.
+All you need is a github.com account.\n\n");
+
+		$answer = $this->output->askConfirmation('Do you want to fork the flow development repository into your github account? ');
+
+		if($answer === TRUE) {
+			$this->forkRepository(
+				Arrays::getValueByPath($this->gitHubSettings, 'origin.organization'),
+				Arrays::getValueByPath($this->gitHubSettings, 'repositories.flow.origin')
+			);
+		}
+
+		$this->saveUserSettings();
+	}
 
 
 	/**
@@ -52,6 +97,51 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 
 		$this->output($this->executeGitCommand(sprintf('git am < %s', $patchPathAndFileName), $package->getPackagePath()));
 		$this->output(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
+
+		if(!$this->output->askConfirmation('Would you like to push the change to your default remote repository? ', FALSE)) {
+			return;
+		}
+	}
+
+
+	/**
+	 * @param string $organization
+	 * @param string$repositoryName
+	 */
+	protected function forkRepository($organization, $repositoryName) {
+		$this->authenticateToGitHub();
+		try {
+			$response = $this->gitHubClient->repo()->forks()->create($organization, $repositoryName);
+		} catch (RuntimeException $exception) {
+			$this->outputLine(sprintf('Error while forking  %s/%s: %s', $organization, $repositoryName, $exception->getMessage()));
+			$this->sendAndExit($exception->getMessage());
+		}
+		$this->outputLine(sprintf('<success>Successfully forked %s/%s to %s</success>', $organization, $repositoryName, $response['html_url']));
+	}
+
+
+	protected function authenticateToGitHub() {
+		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken');
+
+		if($gitHubAccessToken === '') {
+			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (This token can be generated in your github.com application settings): ');
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributer.accessToken', $gitHubAccessToken);
+		}
+
+		$this->gitHubClient->authenticate($gitHubAccessToken, GithubClient::AUTH_HTTP_TOKEN);
+
+		try {
+			$this->gitHubClient->currentUser()->show();
+		} catch (RuntimeException $exception) {
+			$this->outputLine(sprintf('<error>It was not possible to authenticate to GitHub: %s</error>', $exception->getMessage()));
+			$this->sendAndExit($exception->getCode());
+		}
+	}
+
+	protected function saveUserSettings() {
+		$frameworkConfiguration = $this->configurationSource->load(FLOW_PATH_CONFIGURATION . ConfigurationManager::CONFIGURATION_TYPE_SETTINGS);
+		$frameworkConfiguration = Arrays::setValueByPath($frameworkConfiguration, 'Neos.Contribute.gitHub.contributer.accessToken', Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken'));
+		$this->configurationSource->save(FLOW_PATH_CONFIGURATION . ConfigurationManager::CONFIGURATION_TYPE_SETTINGS, $frameworkConfiguration);
 	}
 
 
