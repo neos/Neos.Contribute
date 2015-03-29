@@ -1,0 +1,14 @@
+{
+    "name": "neos/contribute",
+    "type": "typo3-flow-package",
+    "description": "Methos helping contribution to flow nad neos",
+    "require": {
+        "typo3/flow": "*",
+	    "knplabs/github-api": "1.4.*@dev"
+    },
+    "autoload": {
+        "psr-0": {
+            "Neos\\Contribute": "Classes"
+        }
+    }
+}
