@@ -35,14 +35,9 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 
 
 	/**
-	 * @Flow\inject
-	 * @var \Github\Client
+	 * @param integer $patchId The gerrit patchset id
 	 */
-	protected $githubClient;
-
-
-
-	public function createPullRequestFromGerritCommand($patchId = 32240) {
+	public function createPullRequestFromGerritCommand($patchId) {
 		$package = $this->getPatchTargetPackage($patchId);
 		$patchPathAndFileName = $this->getPatchFromGerrit($patchId);
 
@@ -51,7 +46,7 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 		$this->output($this->executeGitCommand(sprintf('git apply --check %s', $patchPathAndFileName), $package->getPackagePath()));
 		$this->output($this->executeGitCommand(sprintf('git apply --stat %s', $patchPathAndFileName), $package->getPackagePath()));
 
-		if(!$this->output->askConfirmation('Would you like to apply this patch?', FALSE)) {
+		if(!$this->output->askConfirmation('Would you like to apply this patch? ', FALSE)) {
 			return;
 		}
 
@@ -122,13 +117,15 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	protected function executeGitCommand($command, $workingDirectory) {
 		$cwd = getcwd();
 		chdir($workingDirectory);
-		$this->outputLine(sprintf('DEBUG: Exec Git Command %s in WD %s', $command, $workingDirectory));
+
+		// $this->outputLine(sprintf('DEBUG: Exec Git Command %s in WD %s', $command, $workingDirectory));
+
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);
 		$outputString = implode("\n", $output) . "\n";
 
 		if ($returnValue !== 0) {
-			$this->outputLine(sprintf('<error>%s</error>', $outputString));
+			$this->outputLine(sprintf("<error>%s</error>\n", $outputString));
 			$this->sendAndExit(1);
 		}
 
