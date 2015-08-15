@@ -11,7 +11,6 @@ use Github\Exception\RuntimeException;
 use TYPO3\Flow\Annotations as Flow;
 use TYPO3\Flow\Configuration\ConfigurationManager;
 use TYPO3\Flow\Utility\Arrays;
-use TYPO3\Flow\Utility\Files;
 
 /**
  * @Flow\Scope("singleton")
@@ -30,21 +29,11 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	protected $gitHubSettings;
 
 	/**
-	 * @var string
-	 */
-	protected $gerritApiPattern = 'https://review.typo3.org/changes/%s/%s';
-
-	/**
 	 * @Flow\inject
 	 * @var \TYPO3\Flow\Utility\Environment
 	 */
 	protected $environment;
 
-	/**
-	 * @Flow\inject
-	 * @var \TYPO3\Flow\Package\PackageManagerInterface
-	 */
-	protected $packageManager;
 
 
 	/**
@@ -53,38 +42,126 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	protected $gitHubClient;
 
 
+	/**
+	 * @Flow\inject
+	 * @var \Neos\Contribute\Domain\Service\GerritService
+	 */
+	protected $gerritService;
+
+
+	/**
+	 * @Flow\inject
+	 * @var \Neos\Contribute\Domain\Service\GitHubService
+	 */
+	protected $gitHubService;
+
+
 	public function initializeObject() {
 		$this->gitHubClient = new GithubClient();
 	}
 
 
-	public function getStartedCommand() {
+	public function setupCommand() {
 
 		$this->output("
 <b>Welcome To Flow / Neos Development</b>
 This wizzard gets your environemnt up and running to easily contribute
 code or documentation to the Neos project.
-All you need is a github.com account.\n\n");
+All you need is a github.com account. \n\n");
 
-		$answer = $this->output->askConfirmation('Do you want to fork the flow development repository into your github account? ');
+		$this->setupGitHubSettings();
 
-		if($answer === TRUE) {
-			$this->forkRepository(
-				Arrays::getValueByPath($this->gitHubSettings, 'origin.organization'),
-				Arrays::getValueByPath($this->gitHubSettings, 'repositories.flow.origin')
-			);
+//		$answer = $this->output->askConfirmation('Do you want to fork the flow development repository into your github account? ');
+//
+//		if($answer === TRUE) {
+//			$this->forkRepository(
+//				Arrays::getValueByPath($this->gitHubSettings, 'origin.organization'),
+//				Arrays::getValueByPath($this->gitHubSettings, 'repositories.flow.origin')
+//			);
+//		}
+//
+//		$this->saveUserSettings();
+	}
+
+
+
+
+	public function setupGitHubSettings() {
+
+		$this->setupAccessToken();
+		$this->setupFork('flow');
+		$this->setupFork('neos');
+
+	}
+
+
+
+	protected function setupAccessToken() {
+
+		if ((string)Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken') === '') {
+			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>");
+			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (will not be displayed): ');
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributer.accessToken', $gitHubAccessToken);
+
+			try {
+				$this->gitHubService->setGitHubSettings($this->gitHubSettings)->authenticateToGitHub();
+			} catch (\Exception $exception) {
+				$this->outputLine(sprintf("<error>%s</error>", $exception->getMessage()));
+				$this->sendAndExit($exception->getCode());
+			}
+
+			$this->saveUserSettings();
+		}
+	}
+
+
+	protected function setupFork($collectionName) {
+
+		if ((string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName)) !== '') {
+			return;
+		}
+
+		$originOrganization = Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
+		$originRepository = Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s', $collectionName));
+
+		$this->outputLine(sprintf("\n<b>Setup %s Development Repository</b>", ucfirst($collectionName)));
+
+		if ($this->output->askConfirmation(sprintf('Do you already have a fork of the %s Development Collection? (y/N): ', ucfirst($collectionName)), FALSE)) {
+			$contributerForkName = $this->output->ask('Please provide the name of your fork: ');
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName), $contributerForkName);
+		} else {
+			if ($this->output->askConfirmation(sprintf('Should I fork the %s Development Collection into your GitHub Account? (Y/n): ', ucfirst($collectionName)), TRUE)) {
+				$contributerForkName = ucfirst($collectionName);
+
+				try {
+					$response = $this->gitHubService->forkRepository($originOrganization, $originRepository);
+				} catch (RuntimeException $exception) {
+					$this->outputLine(sprintf('Error while forking %s/%s: <error>%s</error>', $originOrganization, $originRepository, $exception->getMessage()));
+					$this->sendAndExit($exception->getCode());
+				}
+
+				$this->outputLine(sprintf('<success>Successfully forked %s/%s to %s</success>', $originOrganization, $originRepository, $response['html_url']));
+				$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName), $contributerForkName);
+			}
 		}
 
 		$this->saveUserSettings();
 	}
 
 
+
+
 	/**
 	 * @param integer $patchId The gerrit patchset id
 	 */
 	public function createPullRequestFromGerritCommand($patchId) {
-		$package = $this->getPatchTargetPackage($patchId);
-		$patchPathAndFileName = $this->getPatchFromGerrit($patchId);
+
+		$this->outputLine('Requesting Patch Details from gerrit.');
+		$package = $this->gerritService->getPatchTargetPackage($patchId);
+		$this->outputLine(sprintf('Determined %s as the target package key for this change.', $package));
+
+		$patchPathAndFileName = $this->gerritService->getPatchFromGerrit($patchId);
+		$this->outputLine('Successfully fetched changeset from gerrit');
 
 		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $package->getPackageKey()));
 
@@ -104,98 +181,20 @@ All you need is a github.com account.\n\n");
 	}
 
 
-	/**
-	 * @param string $organization
-	 * @param string$repositoryName
-	 */
-	protected function forkRepository($organization, $repositoryName) {
-		$this->authenticateToGitHub();
-		try {
-			$response = $this->gitHubClient->repo()->forks()->create($organization, $repositoryName);
-		} catch (RuntimeException $exception) {
-			$this->outputLine(sprintf('Error while forking  %s/%s: %s', $organization, $repositoryName, $exception->getMessage()));
-			$this->sendAndExit($exception->getMessage());
-		}
-		$this->outputLine(sprintf('<success>Successfully forked %s/%s to %s</success>', $organization, $repositoryName, $response['html_url']));
-	}
 
 
-	protected function authenticateToGitHub() {
-		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken');
 
-		if($gitHubAccessToken === '') {
-			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (This token can be generated in your github.com application settings): ');
-			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributer.accessToken', $gitHubAccessToken);
-		}
 
-		$this->gitHubClient->authenticate($gitHubAccessToken, GithubClient::AUTH_HTTP_TOKEN);
 
-		try {
-			$this->gitHubClient->currentUser()->show();
-		} catch (RuntimeException $exception) {
-			$this->outputLine(sprintf('<error>It was not possible to authenticate to GitHub: %s</error>', $exception->getMessage()));
-			$this->sendAndExit($exception->getCode());
-		}
-	}
+
+
 
 	protected function saveUserSettings() {
 		$frameworkConfiguration = $this->configurationSource->load(FLOW_PATH_CONFIGURATION . ConfigurationManager::CONFIGURATION_TYPE_SETTINGS);
-		$frameworkConfiguration = Arrays::setValueByPath($frameworkConfiguration, 'Neos.Contribute.gitHub.contributer.accessToken', Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken'));
+		$frameworkConfiguration = Arrays::setValueByPath($frameworkConfiguration, 'Neos.Contribute.gitHub', $this->gitHubSettings);
 		$this->configurationSource->save(FLOW_PATH_CONFIGURATION . ConfigurationManager::CONFIGURATION_TYPE_SETTINGS, $frameworkConfiguration);
 	}
 
-
-	/**
-	 * @param int $patchId
-	 * @return bool|string
-	 * @throws \TYPO3\Flow\Utility\Exception
-	 */
-	protected function getPatchFromGerrit($patchId) {
-		$uri = sprintf($this->gerritApiPattern, $patchId, 'revisions/current/patch?zip');
-		$outputDirectory = Files::concatenatePaths(array($this->environment->getPathToTemporaryDirectory(), 'GerritPatches'));
-		Files::createDirectoryRecursively($outputDirectory);
-		$outputZipFilePath = Files::concatenatePaths(array($outputDirectory, $patchId . '.zip'));
-
-		$httpClient = new \Guzzle\Http\Client();
-		$httpClient->get($uri)->setResponseBody($outputZipFilePath)->send();
-
-		$zip = new \ZipArchive();
-		$zip->open($outputZipFilePath);
-		$patchFile = $zip->getNameIndex(0);
-		$zip->extractTo($outputDirectory);
-		$zip->close();
-		Files::unlink($outputZipFilePath);
-
-		$this->outputLine('Successfully fetched changeset from gerrit');
-
-		return Files::concatenatePaths(array($outputDirectory, $patchFile));
-	}
-
-
-	/**
-	 * @param $patchId
-	 * @return \TYPO3\Flow\Package\PackageInterface
-	 */
-	protected function getPatchTargetPackage($patchId) {
-		$packageName = '';
-
-		$this->outputLine('Requesting Patch Details from gerrit.');
-
-		$httpClient = new \Guzzle\Http\Client();
-		$responseText = $httpClient->get(sprintf($this->gerritApiPattern, $patchId, 'detail'))->send()->getBody(TRUE);
-		$responseText = substr($responseText, 4); // Remove buggy characters in output
-		$details = json_decode($responseText, TRUE);
-
-		if($details !== FALSE) {
-			$projectParts = explode('/', $details['project']);
-			$packageName = $projectParts[1];
-		}
-
-		$this->outputLine(sprintf('Determined %s as the package key for this change.', $packageName));
-		$package = $this->packageManager->getPackage($packageName);
-
-		return $package;
-	}
 
 
 	/**
@@ -221,4 +220,7 @@ All you need is a github.com account.\n\n");
 
 		return $outputString;
 	}
+
+
+
 }

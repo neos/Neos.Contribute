@@ -1,11 +1,13 @@
 Neos:
   Contribute:
     gitHub:
+      origin:
+        organization: 'Neos-GitHub-Test'
+        repositories:
+          flow: 'Flow'
+          neos: 'Neos'
       contributer:
         accessToken:
-      origin:
-        organization: Neos-GitHub-Test
-      repositories:
-        flow:
-          origin: Flow
-          contributer: Flow
+        repositories:
+          flow:
+          neos:
