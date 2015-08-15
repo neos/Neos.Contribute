@@ -52,7 +52,7 @@ class GitHubService {
 	}
 
 
-	public function authenticateToGitHub() {
+	public function authenticate() {
 		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken');
 
 		if(!$gitHubAccessToken) {
@@ -75,10 +75,37 @@ class GitHubService {
 	 * @return \Guzzle\Http\EntityBodyInterface|mixed|string
 	 */
 	public function forkRepository($organization, $repositoryName) {
-		$this->authenticateToGitHub();
+		$this->authenticate();
 		return $this->gitHubClient->repo()->forks()->create($organization, $repositoryName);
 	}
 
+
+	/**
+	 * @param $repositoryName
+	 * @return bool
+	 */
+	public function checkRepositoryExists($repositoryName) {
+		return count($this->getRepositoryDetails($repositoryName)) ? TRUE : FALSE;
+	}
+
+
+	/**
+	 * @param $repositoryName
+	 * @return array
+	 * @throws InvalidConfigurationException
+	 */
+	public function getRepositoryDetails($repositoryName) {
+		$this->authenticate();
+		$repositories = $this->gitHubClient->currentUser()->repositories();
+
+		foreach($repositories as $repository) {
+			if($repository['name'] == $repositoryName) {
+				return $repository;
+			}
+		}
+
+		return array();
+	}
 
 
 	/**

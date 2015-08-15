@@ -63,37 +63,17 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 
 	public function setupCommand() {
 
-		$this->output("
+		$this->outputLine("
 <b>Welcome To Flow / Neos Development</b>
 This wizzard gets your environemnt up and running to easily contribute
-code or documentation to the Neos project.
-All you need is a github.com account. \n\n");
-
-		$this->setupGitHubSettings();
-
-//		$answer = $this->output->askConfirmation('Do you want to fork the flow development repository into your github account? ');
-//
-//		if($answer === TRUE) {
-//			$this->forkRepository(
-//				Arrays::getValueByPath($this->gitHubSettings, 'origin.organization'),
-//				Arrays::getValueByPath($this->gitHubSettings, 'repositories.flow.origin')
-//			);
-//		}
-//
-//		$this->saveUserSettings();
-	}
-
-
-
-
-	public function setupGitHubSettings() {
+code or documentation to the Neos project.\n");
 
 		$this->setupAccessToken();
 		$this->setupFork('flow');
 		$this->setupFork('neos');
 
+		$this->outputLine("\n<success>Everything is set up correctly.</success>");
 	}
-
 
 
 	protected function setupAccessToken() {
@@ -102,23 +82,29 @@ All you need is a github.com account. \n\n");
 			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>");
 			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (will not be displayed): ');
 			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributer.accessToken', $gitHubAccessToken);
-
-			try {
-				$this->gitHubService->setGitHubSettings($this->gitHubSettings)->authenticateToGitHub();
-			} catch (\Exception $exception) {
-				$this->outputLine(sprintf("<error>%s</error>", $exception->getMessage()));
-				$this->sendAndExit($exception->getCode());
-			}
-
-			$this->saveUserSettings();
 		}
+
+		try {
+			$this->gitHubService->setGitHubSettings($this->gitHubSettings)->authenticate();
+		} catch (\Exception $exception) {
+			$this->outputLine(sprintf("<error>%s</error>", $exception->getMessage()));
+			$this->sendAndExit($exception->getCode());
+		}
+		$this->outputLine('<success>Authentication to GitHub was successful!</success>');
+		$this->saveUserSettings();
 	}
 
 
 	protected function setupFork($collectionName) {
 
-		if ((string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName)) !== '') {
-			return;
+		$configuredContributerForkName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName));
+		if ($configuredContributerForkName !== '') {
+			if($this->gitHubService->checkRepositoryExists($configuredContributerForkName)) {
+				$this->outputLine(sprintf('<success>A fork of %s was found in your github account!</success>', $collectionName));
+				return;
+			} else {
+				$this->outputLine(sprintf('A fork of %s was configured, but was not found in your github account.', $collectionName));
+			}
 		}
 
 		$originOrganization = Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
@@ -128,6 +114,10 @@ All you need is a github.com account. \n\n");
 
 		if ($this->output->askConfirmation(sprintf('Do you already have a fork of the %s Development Collection? (y/N): ', ucfirst($collectionName)), FALSE)) {
 			$contributerForkName = $this->output->ask('Please provide the name of your fork: ');
+			if(!$this->gitHubService->checkRepositoryExists($configuredContributerForkName)) {
+				$this->outputLine(sprintf('<error>The fork %s was not found in your repository. Please start again</error>', $configuredContributerForkName));
+			}
+
 			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName), $contributerForkName);
 		} else {
 			if ($this->output->askConfirmation(sprintf('Should I fork the %s Development Collection into your GitHub Account? (Y/n): ', ucfirst($collectionName)), TRUE)) {
