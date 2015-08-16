@@ -9,6 +9,7 @@ namespace Neos\Contribute\Command;
 use Github\Client as GitHubClient;
 use Github\Exception\RuntimeException;
 use TYPO3\Flow\Annotations as Flow;
+use TYPO3\Flow\Composer\Exception\InvalidConfigurationException;
 use TYPO3\Flow\Configuration\ConfigurationManager;
 use TYPO3\Flow\Utility\Arrays;
 use TYPO3\Flow\Utility\Files;
@@ -62,6 +63,12 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	}
 
 
+	/**
+	 * Interactively prepares your repositories
+	 *
+	 * The setup wizard interactively configures your flow and neos forks and will also create the forks for you if needed.
+	 * It further renames the original remotes to "upstream" and adds your fork as remote with name "origin".
+	 */
 	public function setupCommand() {
 
 		$this->outputLine("
@@ -79,42 +86,72 @@ code or documentation to the Neos project.\n");
 
 
 	/**
+	 * Transfers a gerrit patch to a github pull request.
+	 *
 	 * @param integer $patchId The gerrit patchset id
 	 */
 	public function createPullRequestFromGerritCommand($patchId) {
 
+		try {
+			$this->gitHubService->authenticate();
+		} catch (InvalidConfigurationException $e) {
+			$this->outputLine('<error>It was not possible to authenticate with github.</error>');
+			$this->outputLine('Please run <b>./flow github:setup</b> first');
+		}
+
 		$this->outputLine('Requesting Patch Details from gerrit.');
 		$package = $this->gerritService->getPatchTargetPackage($patchId);
-		$this->outputLine(sprintf('Determined <b>%s</b> as the target package key for this change.', $package->getPackageKey()));
+		$packageKey = $package->getPackageKey();
+		$packagePath = $package->getPackagePath();
+
+		$this->outputLine(sprintf('Determined <b>%s</b> as the target package key for this change.', $packageKey));
 
 		$patchPathAndFileName = $this->gerritService->getPatchFromGerrit($patchId);
 		$this->outputLine('Successfully fetched changeset from gerrit.');
 
-		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $package->getPackageKey()));
+		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $packageKey));
 
-		$this->output($this->executeGitCommand(sprintf('git apply --check %s', $patchPathAndFileName), $package->getPackagePath()));
-		$this->output($this->executeGitCommand(sprintf('git apply --stat %s', $patchPathAndFileName), $package->getPackagePath()));
+		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --check %s', $packageKey, $patchPathAndFileName), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --stat %s', $packageKey, $patchPathAndFileName), $packagePath));
 
-		if(!$this->output->askConfirmation('Would you like to apply this patch? (Y/n): ', TRUE)) {
+		if(!$this->output->askConfirmation("\nWould you like to apply this patch? (Y/n): ", TRUE)) {
 			return;
 		}
 
-		$this->output($this->executeGitCommand(sprintf('git checkout -b %s origin/master', $patchId), $package->getPackagePath()));
-		$this->output($this->executeGitCommand(sprintf('git am < %s', $patchPathAndFileName), $package->getPackagePath()));
+		$this->output($this->executeGitCommand(sprintf('git checkout -b %s upstream/master', $patchId), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $packagePath));
 		$this->outputLine(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
 
-		if(!$this->output->askConfirmation('Would you like to push the change to your repository? (Y/n)', TRUE)) {
+		if(!$this->output->askConfirmation("\nWould you like to push the change to your repository and create a pull request? (Y/n)", TRUE)) {
 			return;
 		}
 
+		$remoteRepository = $this->getGitRemoteRepositoryOfDirectory($packagePath);
+		$this->output($this->executeGitCommand(sprintf('git push origin %s', $patchId), $packagePath));
+		$this->createPullRequest($remoteRepository, $patchId);
 
-
+		$this->output($this->executeGitCommand(sprintf('git checkout master'), $packagePath));
 	}
 
 
+	/**
+	 * Create a pull request for the given patch
+	 *
+	 * @param $repository
+	 * @param $patchId
+	 */
+	protected function createPullRequest($repository, $patchId) {
+		$commitDetails = $this->gerritService->getCommitDetails($patchId);
+		$commitDetails['message'] = str_replace($commitDetails['subject'], '', $commitDetails['message']);
+
+		$result = $this->gitHubService->createPullRequest($repository, $patchId, $commitDetails['subject'], $commitDetails['message']);
+		$patchUrl = $result['html_url'];
+
+		$this->outputLine(sprintf('<success>Successfully opened a pull request </success><b>%s</b><success> for patch %s </success>',$patchUrl, $patchId));
+	}
+
 
 	protected function setupAccessToken() {
-
 		if ((string)Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken') === '') {
 			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>");
 			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (will not be displayed): ');
@@ -132,7 +169,9 @@ code or documentation to the Neos project.\n");
 	}
 
 
-
+	/**
+	 * @param $collectionName
+	 */
 	protected function setupFork($collectionName) {
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		if ($contributorRepositoryName !== '') {
@@ -191,7 +230,7 @@ code or documentation to the Neos project.\n");
 		));
 
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
-		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'ssh_url');
+		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'git_url');
 
 		$this->executeGitCommand('git remote rename origin upstream', $packageCollectionPath);
 		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
@@ -206,6 +245,16 @@ code or documentation to the Neos project.\n");
 	}
 
 
+	/**
+	 * @param $directoryPath
+	 * @return string
+	 */
+	protected function getGitRemoteRepositoryOfDirectory($directoryPath) {
+		$remoteInfo = $this->executeGitCommand('git remote show origin', $directoryPath);
+		preg_match('/Fetch.*(Flow|Neos)\.git/', $remoteInfo, $matches);
+		return $matches[1];
+	}
+
 
 	/**
 	 * @param $workingDirectory
@@ -217,7 +266,7 @@ code or documentation to the Neos project.\n");
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
-		$this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
+		// $this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
 
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);

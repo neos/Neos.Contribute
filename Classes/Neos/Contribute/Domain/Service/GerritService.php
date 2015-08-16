@@ -28,6 +28,7 @@ namespace Neos\Contribute\Domain\Service;
 
 use TYPO3\Flow\Annotations as Flow;
 use Guzzle\Http\Client;
+use TYPO3\Flow\Configuration\Exception\ParseErrorException;
 use TYPO3\Flow\Utility\Files;
 
 class GerritService {
@@ -85,21 +86,42 @@ class GerritService {
 	 * @return \TYPO3\Flow\Package\PackageInterface
 	 */
 	public function getPatchTargetPackage($patchId) {
-		$packageName = '';
+		$details = $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'detail'));
 
-		$httpClient = new Client();
-		$responseText = $httpClient->get(sprintf($this->gerritApiPattern, $patchId, 'detail'))->send()->getBody(TRUE);
-		$responseText = substr($responseText, 4); // Remove buggy characters in output
-		$details = json_decode($responseText, TRUE);
-
-		if($details !== FALSE) {
-			$projectParts = explode('/', $details['project']);
-			$packageName = $projectParts[1];
-		}
+		$projectParts = explode('/', $details['project']);
+		$packageName = $projectParts[1];
 
 		$package = $this->packageManager->getPackage($packageName);
 
 		return $package;
 	}
 
+
+	/**
+	 * @param $patchId
+	 * @return array
+	 * @throws ParseErrorException
+	 */
+	public function getCommitDetails($patchId) {
+		return $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'revisions/current/commit'));
+	}
+
+
+	/**
+	 * @param $url
+	 * @return array
+	 * @throws ParseErrorException
+	 */
+	protected function requestGerritAPI($url) {
+		$httpClient = new Client();
+		$responseText = $httpClient->get($url)->send()->getBody(TRUE);
+		$responseText = substr($responseText, 4); // Remove buggy characters in output
+		$responseData = json_decode($responseText, TRUE);
+
+		if ($responseData == FALSE) {
+			throw new ParseErrorException('The response data could not be parsed.', 1439716592);
+		}
+
+		return $responseData;
+	}
 }

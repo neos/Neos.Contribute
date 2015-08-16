@@ -53,11 +53,20 @@ class GitHubService {
 	protected $repositoryConfigurationCollection = NULL;
 
 
+	/**
+	 * @var string
+	 */
+	protected $currentUserLogin = '';
+
+
 	public function initializeObject() {
 		$this->gitHubClient = new GithubClient();
 	}
 
 
+	/**
+	 * @throws InvalidConfigurationException
+	 */
 	public function authenticate() {
 		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken');
 
@@ -68,10 +77,36 @@ class GitHubService {
 		$this->gitHubClient->authenticate($gitHubAccessToken, GithubClient::AUTH_HTTP_TOKEN);
 
 		try {
-			$this->gitHubClient->currentUser()->show();
+			$userDetails = $this->gitHubClient->currentUser()->show();
+			$this->currentUserLogin = $userDetails['login'];
 		} catch (RuntimeException $exception) {
 			throw new InvalidConfigurationException('It was not possible to authenticate to GitHub: ' . $exception->getMessage(), $exception->getCode());
 		}
+	}
+
+
+	/**
+	 * @param $repositoryName
+	 * @param $branchName
+	 * @param $commitTitle
+	 * @param $commitBody
+	 * @return array
+	 * @throws InvalidConfigurationException
+	 * @throws \Github\Exception\MissingArgumentException
+	 */
+	public function createPullRequest($repositoryName, $branchName, $commitTitle, $commitBody) {
+		$organization = (string) Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
+
+		$this->authenticate();
+
+		$params = array(
+			'title' => $commitTitle,
+			'head' => sprintf('%s:%s', $this->currentUserLogin, $branchName),
+			'body' => $commitBody,
+			'base' => 'master'
+		);
+
+		return $this->gitHubClient->pullRequests()->create($organization, $repositoryName, $params);
 	}
 
 
