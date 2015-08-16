@@ -2,12 +2,18 @@ Neos:
   Contribute:
     gitHub:
       origin:
-        organization: 'Neos-GitHub-Test'
+        organization: 'kitsunet'
         repositories:
-          flow: 'Flow'
-          neos: 'Neos'
-      contributer:
+          flow:
+            name: 'Flow'
+            packageDirectory: 'Framework'
+          neos:
+            name: 'Neos'
+            packageDirectory: 'Neos'
+      contributor:
         accessToken:
         repositories:
           flow:
+            name:
           neos:
+            name:
