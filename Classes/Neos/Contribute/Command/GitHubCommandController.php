@@ -134,11 +134,10 @@ code or documentation to the Neos project.\n");
 
 
 	protected function setupFork($collectionName) {
-
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		if ($contributorRepositoryName !== '') {
 			if($this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
-				$this->outputLine(sprintf('<success>A fork of %s was found in your github account!</success>', $collectionName));
+				$this->outputLine(sprintf('<success>A fork of the %s dev-collection was found in your github account!</success>', $collectionName));
 				return;
 			} else {
 				$this->outputLine(sprintf('A fork of %s was configured, but was not found in your github account.', $collectionName));
@@ -186,10 +185,10 @@ code or documentation to the Neos project.\n");
 	 * @param $collectionName
 	 */
 	protected function setupRemotes($collectionName) {
-		$packageCollectionPath = Files::concatenatePaths (
+		$packageCollectionPath = Files::concatenatePaths (array(
 			FLOW_PATH_PACKAGES,
-			(string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.packageDirectory', $collectionName))
-		);
+			(string)Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s.packageDirectory', $collectionName))
+		));
 
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'ssh_url');
@@ -218,7 +217,7 @@ code or documentation to the Neos project.\n");
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
-		$this->outputLine(sprintf('DEBUG: Exec Git Command %s in WD %s', $command, $workingDirectory));
+		$this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
 
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);

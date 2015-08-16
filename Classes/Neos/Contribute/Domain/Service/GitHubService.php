@@ -101,7 +101,8 @@ class GitHubService {
 	 * @return mixed
 	 */
 	public function getRepositoryConfigurationProperty($repository, $key) {
-		return Arrays::getValueByPath($this->getRepositoryConfiguration($repository), $key);
+		$repositoryConfiguration = $this->getRepositoryConfiguration($repository);
+		return Arrays::getValueByPath($repositoryConfiguration, $key);
 	}
 
 
