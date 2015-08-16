@@ -47,13 +47,19 @@ class GitHubService {
 	protected $gitHubClient;
 
 
+	/**
+	 * @var array
+	 */
+	protected $repositoryConfigurationCollection = NULL;
+
+
 	public function initializeObject() {
 		$this->gitHubClient = new GithubClient();
 	}
 
 
 	public function authenticate() {
-		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken');
+		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken');
 
 		if(!$gitHubAccessToken) {
 			throw new InvalidConfigurationException('The GitHub access token was not configured.', 1439627205);
@@ -85,7 +91,17 @@ class GitHubService {
 	 * @return bool
 	 */
 	public function checkRepositoryExists($repositoryName) {
-		return count($this->getRepositoryDetails($repositoryName)) ? TRUE : FALSE;
+		return count($this->getRepositoryConfiguration($repositoryName)) ? TRUE : FALSE;
+	}
+
+
+	/**
+	 * @param $repository
+	 * @param $key
+	 * @return mixed
+	 */
+	public function getRepositoryConfigurationProperty($repository, $key) {
+		return Arrays::getValueByPath($this->getRepositoryConfiguration($repository), $key);
 	}
 
 
@@ -94,11 +110,14 @@ class GitHubService {
 	 * @return array
 	 * @throws InvalidConfigurationException
 	 */
-	public function getRepositoryDetails($repositoryName) {
+	public function getRepositoryConfiguration($repositoryName) {
 		$this->authenticate();
-		$repositories = $this->gitHubClient->currentUser()->repositories();
 
-		foreach($repositories as $repository) {
+		if($this->repositoryConfigurationCollection === NULL) {
+			$this->repositoryConfigurationCollection = $this->gitHubClient->currentUser()->repositories();
+		}
+
+		foreach($this->repositoryConfigurationCollection as $repository) {
 			if($repository['name'] == $repositoryName) {
 				return $repository;
 			}

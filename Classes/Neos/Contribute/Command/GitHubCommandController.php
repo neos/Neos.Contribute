@@ -11,6 +11,7 @@ use Github\Exception\RuntimeException;
 use TYPO3\Flow\Annotations as Flow;
 use TYPO3\Flow\Configuration\ConfigurationManager;
 use TYPO3\Flow\Utility\Arrays;
+use TYPO3\Flow\Utility\Files;
 
 /**
  * @Flow\Scope("singleton")
@@ -76,12 +77,48 @@ code or documentation to the Neos project.\n");
 	}
 
 
+
+	/**
+	 * @param integer $patchId The gerrit patchset id
+	 */
+	public function createPullRequestFromGerritCommand($patchId) {
+
+		$this->outputLine('Requesting Patch Details from gerrit.');
+		$package = $this->gerritService->getPatchTargetPackage($patchId);
+		$this->outputLine(sprintf('Determined <b>%s</b> as the target package key for this change.', $package->getPackageKey()));
+
+		$patchPathAndFileName = $this->gerritService->getPatchFromGerrit($patchId);
+		$this->outputLine('Successfully fetched changeset from gerrit.');
+
+		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $package->getPackageKey()));
+
+		$this->output($this->executeGitCommand(sprintf('git apply --check %s', $patchPathAndFileName), $package->getPackagePath()));
+		$this->output($this->executeGitCommand(sprintf('git apply --stat %s', $patchPathAndFileName), $package->getPackagePath()));
+
+		if(!$this->output->askConfirmation('Would you like to apply this patch? (Y/n): ', TRUE)) {
+			return;
+		}
+
+		$this->output($this->executeGitCommand(sprintf('git checkout -b %s origin/master', $patchId), $package->getPackagePath()));
+		$this->output($this->executeGitCommand(sprintf('git am < %s', $patchPathAndFileName), $package->getPackagePath()));
+		$this->outputLine(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
+
+		if(!$this->output->askConfirmation('Would you like to push the change to your repository? (Y/n)', TRUE)) {
+			return;
+		}
+
+
+
+	}
+
+
+
 	protected function setupAccessToken() {
 
-		if ((string)Arrays::getValueByPath($this->gitHubSettings, 'contributer.accessToken') === '') {
+		if ((string)Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken') === '') {
 			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>");
 			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (will not be displayed): ');
-			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributer.accessToken', $gitHubAccessToken);
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributor.accessToken', $gitHubAccessToken);
 		}
 
 		try {
@@ -95,11 +132,12 @@ code or documentation to the Neos project.\n");
 	}
 
 
+
 	protected function setupFork($collectionName) {
 
-		$configuredContributerForkName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName));
-		if ($configuredContributerForkName !== '') {
-			if($this->gitHubService->checkRepositoryExists($configuredContributerForkName)) {
+		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
+		if ($contributorRepositoryName !== '') {
+			if($this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
 				$this->outputLine(sprintf('<success>A fork of %s was found in your github account!</success>', $collectionName));
 				return;
 			} else {
@@ -108,20 +146,20 @@ code or documentation to the Neos project.\n");
 		}
 
 		$originOrganization = Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
-		$originRepository = Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s', $collectionName));
+		$originRepository = Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s.name', $collectionName));
 
 		$this->outputLine(sprintf("\n<b>Setup %s Development Repository</b>", ucfirst($collectionName)));
 
 		if ($this->output->askConfirmation(sprintf('Do you already have a fork of the %s Development Collection? (y/N): ', ucfirst($collectionName)), FALSE)) {
-			$contributerForkName = $this->output->ask('Please provide the name of your fork: ');
-			if(!$this->gitHubService->checkRepositoryExists($configuredContributerForkName)) {
-				$this->outputLine(sprintf('<error>The fork %s was not found in your repository. Please start again</error>', $configuredContributerForkName));
+			$contributorForkName = $this->output->ask('Please provide the name of your fork: ');
+			if(!$this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
+				$this->outputLine(sprintf('<error>The fork %s was not found in your repository. Please start again</error>', $contributorRepositoryName));
 			}
 
-			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName), $contributerForkName);
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorForkName);
 		} else {
 			if ($this->output->askConfirmation(sprintf('Should I fork the %s Development Collection into your GitHub Account? (Y/n): ', ucfirst($collectionName)), TRUE)) {
-				$contributerForkName = ucfirst($collectionName);
+				$contributorForkName = ucfirst($collectionName);
 
 				try {
 					$response = $this->gitHubService->forkRepository($originOrganization, $originRepository);
@@ -131,51 +169,34 @@ code or documentation to the Neos project.\n");
 				}
 
 				$this->outputLine(sprintf('<success>Successfully forked %s/%s to %s</success>', $originOrganization, $originRepository, $response['html_url']));
-				$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributer.repositories.%s', $collectionName), $contributerForkName);
+				$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorForkName);
 			}
 		}
 
 		$this->saveUserSettings();
+
+		$this->setupRemotes($collectionName);
 	}
-
-
 
 
 	/**
-	 * @param integer $patchId The gerrit patchset id
+	 * Renames the original repository to upstream
+	 * and adds the own fork as origin
+	 *
+	 * @param $collectionName
 	 */
-	public function createPullRequestFromGerritCommand($patchId) {
+	protected function setupRemotes($collectionName) {
+		$packageCollectionPath = Files::concatenatePaths (
+			FLOW_PATH_PACKAGES,
+			(string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.packageDirectory', $collectionName))
+		);
 
-		$this->outputLine('Requesting Patch Details from gerrit.');
-		$package = $this->gerritService->getPatchTargetPackage($patchId);
-		$this->outputLine(sprintf('Determined %s as the target package key for this change.', $package));
+		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
+		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'ssh_url');
 
-		$patchPathAndFileName = $this->gerritService->getPatchFromGerrit($patchId);
-		$this->outputLine('Successfully fetched changeset from gerrit');
-
-		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $package->getPackageKey()));
-
-		$this->output($this->executeGitCommand(sprintf('git apply --check %s', $patchPathAndFileName), $package->getPackagePath()));
-		$this->output($this->executeGitCommand(sprintf('git apply --stat %s', $patchPathAndFileName), $package->getPackagePath()));
-
-		if(!$this->output->askConfirmation('Would you like to apply this patch? ', FALSE)) {
-			return;
-		}
-
-		$this->output($this->executeGitCommand(sprintf('git am < %s', $patchPathAndFileName), $package->getPackagePath()));
-		$this->output(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
-
-		if(!$this->output->askConfirmation('Would you like to push the change to your default remote repository? ', FALSE)) {
-			return;
-		}
+		$this->executeGitCommand('git remote rename origin upstream', $packageCollectionPath);
+		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
 	}
-
-
-
-
-
-
-
 
 
 
@@ -197,7 +218,7 @@ code or documentation to the Neos project.\n");
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
-		// $this->outputLine(sprintf('DEBUG: Exec Git Command %s in WD %s', $command, $workingDirectory));
+		$this->outputLine(sprintf('DEBUG: Exec Git Command %s in WD %s', $command, $workingDirectory));
 
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);
