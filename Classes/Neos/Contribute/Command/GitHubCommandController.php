@@ -37,7 +37,6 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	protected $environment;
 
 
-
 	/**
 	 * @var GitHubClient
 	 */
@@ -56,6 +55,8 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	 * @var \Neos\Contribute\Domain\Service\GitHubService
 	 */
 	protected $gitHubService;
+
+
 
 
 	public function initializeObject() {
@@ -266,7 +267,7 @@ code or documentation to the Neos project.\n");
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
-		// $this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
+		 $this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
 
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);

@@ -5,10 +5,10 @@ Neos:
         organization: 'neos'
         repositories:
           flow:
-            name: 'neos-development-collection'
+            name: 'flow-development-collection'
             packageDirectory: 'Framework'
           neos:
-            name: 'flow-development-collection'
+            name: 'neos-development-collection'
             packageDirectory: 'Neos'
       contributor:
         accessToken:
