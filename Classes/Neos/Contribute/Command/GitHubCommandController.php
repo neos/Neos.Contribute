@@ -198,7 +198,7 @@ code or documentation to the Neos project.\n");
 			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorForkName);
 		} else {
 			if ($this->output->askConfirmation(sprintf('Should I fork the %s Development Collection into your GitHub Account? (Y/n): ', ucfirst($collectionName)), TRUE)) {
-				$contributorForkName = ucfirst($collectionName);
+				$contributorForkName = $originRepository;
 
 				try {
 					$response = $this->gitHubService->forkRepository($originOrganization, $originRepository);
