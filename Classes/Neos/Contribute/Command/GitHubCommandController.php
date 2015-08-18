@@ -119,6 +119,7 @@ code or documentation to the Neos project.\n");
 			return;
 		}
 
+		$this->output($this->executeGitCommand(sprintf('git fetch upstream master'), $packagePath));
 		$this->output($this->executeGitCommand(sprintf('git checkout -b %s upstream/master', $patchId), $packagePath));
 		$this->output($this->executeGitCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $packagePath));
 		$this->outputLine(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
@@ -223,6 +224,7 @@ code or documentation to the Neos project.\n");
 	 * and adds the own fork as origin
 	 *
 	 * @param $collectionName
+	 * @throws \Exception
 	 */
 	protected function setupRemotes($collectionName) {
 		$packageCollectionPath = Files::concatenatePaths (array(
@@ -231,10 +233,7 @@ code or documentation to the Neos project.\n");
 		));
 
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
-
-		sleep(2); // Sleep a second till the github fork is complete
-
-		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'git_url');
+		$sshUrl = $this->gitHubService->buildSSHUrlForRepository($contributorRepositoryName);
 
 		$this->executeGitCommand('git remote rename origin upstream', $packageCollectionPath);
 		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
@@ -270,7 +269,7 @@ code or documentation to the Neos project.\n");
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
-		 $this->outputLine(sprintf("[%s] %s", $workingDirectory, $command));
+		$this->outputLine(sprintf("<b>GIT</b> [%s] %s", $workingDirectory, $command));
 
 		exec($command . " 2>&1", $output, $returnValue);
 		chdir($cwd);

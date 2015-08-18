@@ -142,6 +142,19 @@ class GitHubService {
 
 
 	/**
+	 * Builds the ssh url for a given repository
+	 *
+	 * @param $repositoryName
+	 * @return string
+	 * @throws InvalidConfigurationException
+	 */
+	public function buildSSHUrlForRepository($repositoryName) {
+		$this->authenticate();
+		return sprintf('git://github.com/%s/%s.git', $this->currentUserLogin, $repositoryName);
+	}
+
+
+	/**
 	 * @param $repositoryName
 	 * @return array
 	 * @throws InvalidConfigurationException
