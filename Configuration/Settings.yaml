@@ -2,7 +2,7 @@ Neos:
   Contribute:
     gitHub:
       origin:
-        organization: 'kitsunet'
+        organization: 'neos'
         repositories:
           flow:
             name: 'Flow'
