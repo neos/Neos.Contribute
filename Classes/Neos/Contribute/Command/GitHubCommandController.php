@@ -231,6 +231,9 @@ code or documentation to the Neos project.\n");
 		));
 
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
+
+		sleep(2); // Sleep a second till the github fork is complete
+
 		$sshUrl = $this->gitHubService->getRepositoryConfigurationProperty($contributorRepositoryName, 'git_url');
 
 		$this->executeGitCommand('git remote rename origin upstream', $packageCollectionPath);
