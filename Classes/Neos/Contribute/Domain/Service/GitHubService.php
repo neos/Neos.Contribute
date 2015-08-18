@@ -150,7 +150,7 @@ class GitHubService {
 	 */
 	public function buildSSHUrlForRepository($repositoryName) {
 		$this->authenticate();
-		return sprintf('git://github.com/%s/%s.git', $this->currentUserLogin, $repositoryName);
+		return sprintf('git@github.com:%s/%s.git', $this->currentUserLogin, $repositoryName);
 	}
 
 
