@@ -254,7 +254,7 @@ code or documentation to the Neos project.\n");
 	 */
 	protected function getGitRemoteRepositoryOfDirectory($directoryPath) {
 		$remoteInfo = $this->executeGitCommand('git remote show origin', $directoryPath);
-		preg_match('/Fetch.*(Flow|Neos)\.git/', $remoteInfo, $matches);
+		preg_match('/Fetch.*(flow-development-collection|neos-development-collection)\.git/', $remoteInfo, $matches);
 		return $matches[1];
 	}
 
