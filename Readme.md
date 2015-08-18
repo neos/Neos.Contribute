@@ -1,4 +1,4 @@
-# Setup your configuration
+### Setup your configuration
 
 The setup wizard interactively configures your flow and neos forks and will also create the forks for you if needed. 
 It further renames the original remotes to "upstream" and adds your fork as remote with name "origin".  
@@ -6,7 +6,7 @@ It further renames the original remotes to "upstream" and adds your fork as remo
 	./flow github:setup
 
 
-# Transfer a gerrit change to github
+### Transfer a gerrit change to github
 
 This command transfers a gerrit patch to a github pull request. In detail it does the following steps:
 
