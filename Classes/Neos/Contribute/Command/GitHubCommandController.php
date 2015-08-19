@@ -172,13 +172,14 @@ code or documentation to the Neos project.\n");
 
 
 	/**
-	 * @param $collectionName
+	 * @param string $collectionName
 	 */
 	protected function setupFork($collectionName) {
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		if ($contributorRepositoryName !== '') {
 			if($this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
 				$this->outputLine(sprintf('<success>A fork of the %s dev-collection was found in your github account!</success>', $collectionName));
+				$this->setupRemotes($collectionName);
 				return;
 			} else {
 				$this->outputLine(sprintf('A fork of %s was configured, but was not found in your github account.', $collectionName));
@@ -235,8 +236,10 @@ code or documentation to the Neos project.\n");
 		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		$sshUrl = $this->gitHubService->buildSSHUrlForRepository($contributorRepositoryName);
 
-		$this->executeGitCommand('git remote rename origin upstream', $packageCollectionPath);
+		$this->executeGitCommand('git remote rm origin', $packageCollectionPath, TRUE);
 		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
+		$this->executeGitCommand('git remote rm upstream', $packageCollectionPath, TRUE);
+		$this->executeGitCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $collectionName), $packageCollectionPath);
 	}
 
 
@@ -260,12 +263,12 @@ code or documentation to the Neos project.\n");
 
 
 	/**
-	 * @param $workingDirectory
-	 * @param $command
-	 * @return mixed
-	 * @throws \RuntimeException
+	 * @param string $command
+	 * @param string $workingDirectory
+	 * @param boolean $force
+	 * @return string
 	 */
-	protected function executeGitCommand($command, $workingDirectory) {
+	protected function executeGitCommand($command, $workingDirectory, $force = FALSE) {
 		$cwd = getcwd();
 		chdir($workingDirectory);
 
@@ -275,7 +278,7 @@ code or documentation to the Neos project.\n");
 		chdir($cwd);
 		$outputString = implode("\n", $output) . "\n";
 
-		if ($returnValue !== 0) {
+		if ($returnValue !== 0 && $force === FALSE) {
 			$this->outputLine(sprintf("<error>%s</error>\n", $outputString));
 			$this->sendAndExit(1);
 		}
