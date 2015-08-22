@@ -192,15 +192,15 @@ code or documentation to the Neos project.\n");
 		$this->outputLine(sprintf("\n<b>Setup %s Development Repository</b>", ucfirst($collectionName)));
 
 		if ($this->output->askConfirmation(sprintf('Do you already have a fork of the %s Development Collection? (y/N): ', ucfirst($collectionName)), FALSE)) {
-			$contributorForkName = $this->output->ask('Please provide the name of your fork: ');
+			$contributorRepositoryName = $this->output->ask('Please provide the name of your fork: ');
 			if(!$this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
 				$this->outputLine(sprintf('<error>The fork %s was not found in your repository. Please start again</error>', $contributorRepositoryName));
 			}
 
-			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorForkName);
+			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorRepositoryName);
 		} else {
 			if ($this->output->askConfirmation(sprintf('Should I fork the %s Development Collection into your GitHub Account? (Y/n): ', ucfirst($collectionName)), TRUE)) {
-				$contributorForkName = $originRepository;
+				$contributorRepositoryName = $originRepository;
 
 				try {
 					$response = $this->gitHubService->forkRepository($originOrganization, $originRepository);
@@ -210,7 +210,7 @@ code or documentation to the Neos project.\n");
 				}
 
 				$this->outputLine(sprintf('<success>Successfully forked %s/%s to %s</success>', $originOrganization, $originRepository, $response['html_url']));
-				$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorForkName);
+				$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName), $contributorRepositoryName);
 			}
 		}
 
