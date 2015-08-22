@@ -233,13 +233,14 @@ code or documentation to the Neos project.\n");
 			(string)Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s.packageDirectory', $collectionName))
 		));
 
-		$contributorRepositoryName = (string)Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
+		$originRepositoryName = (string) Arrays::getValueByPath($this->gitHubSettings, sprintf('origin.repositories.%s.name', $collectionName));
+		$contributorRepositoryName = (string) Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
 		$sshUrl = $this->gitHubService->buildSSHUrlForRepository($contributorRepositoryName);
 
 		$this->executeGitCommand('git remote rm origin', $packageCollectionPath, TRUE);
 		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
 		$this->executeGitCommand('git remote rm upstream', $packageCollectionPath, TRUE);
-		$this->executeGitCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $collectionName), $packageCollectionPath);
+		$this->executeGitCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $originRepositoryName), $packageCollectionPath);
 	}
 
 
