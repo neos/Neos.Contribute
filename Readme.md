@@ -24,18 +24,25 @@ transfers a gerrit patch to a github pull request. In detail it does the followi
 
 #### Manually transfer a gerrit change to github
 
-These are the steps you have to do to manually move a gerrit patch to github. The example commands move a patch for the package TYPO3.TYPO3CR.
+These are the steps you have to do to manually move a gerrit patch to github. The example commands move a patch for the package TYPO3.TYPO3CR. If you have changes that are stacked on each other, repeat step 5 until all needed changes have been applied, then continue.
 
 1. Go to your change on https://review.typo3.org
-2. Download the patch file and extract it
-3. Bring your local repository and code up to date with the upstream repository
-5. Navigate to the package directory (e.g. Packages/Neos/TYPO3.TYPO3CR/)
+2. Bring your local repository and code up to date with the upstream repository
+3. Navigate to the package directory (e.g. Packages/Neos/TYPO3.TYPO3CR/)
 4. Add a new branch.
-5. Patch your code using `git am`. Example:
+5. Patch your code using `git am` after having copied the "fomat patch" git command. Example:
 
-		git am --directory TYPO3.TYPO3CR /tmp/GerritPatches/99194a75.diff
+   `git fetch http://review.typo3.org/Packages/TYPO3.TYPO3CR refs/changes/xx/yyyyy/z && git format-patch -1 -k --stdout FETCH_HEAD | git am -k --directory TYPO3.TYPO3CR`
+
+   Mind the added `-k` for the `format-patch` and `am` git commands, it makes sure tags like `[TASK]` are kept.
+   
+   If you are patching a repository that is not a "development collection", you can leave out `--directory`.
 		
-6. Commit the changes
-8. Push the changes to origin/branchName
-9. Go to github and open a pull request
-10. Abandon the change on gerrit.
+6. Check the result (you may need to amend the commit to fix the [<TAG>] used in the subject line if you left
+   out the `-k` option)
+7. Push the changes to origin/branchName
+8. Go to github and open a pull request
+9. Abandon the change on gerrit.
+
+Hint: If you are using SourceTree, steps 7 and 8 can be done by using the "Create Pull Request" item in
+the "Repository" menu.
