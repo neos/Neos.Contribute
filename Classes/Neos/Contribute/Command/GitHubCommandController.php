@@ -73,9 +73,9 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController {
 	public function setupCommand() {
 
 		$this->outputLine("
-<b>Welcome To Flow / Neos Development</b>
-This wizzard gets your environemnt up and running to easily contribute
-code or documentation to the Neos project.\n");
+<b>Welcome to Flow / Neos Development</b>
+This wizard gets your environment up and running to easily contribute
+code or documentation to the Neos Project.\n");
 
 		$this->setupAccessToken();
 		$this->setupFork('flow');
@@ -96,11 +96,11 @@ code or documentation to the Neos project.\n");
 		try {
 			$this->gitHubService->authenticate();
 		} catch (InvalidConfigurationException $e) {
-			$this->outputLine('<error>It was not possible to authenticate with github.</error>');
+			$this->outputLine('<error>It was not possible to authenticate with GitHub.</error>');
 			$this->outputLine('Please run <b>./flow github:setup</b> first');
 		}
 
-		$this->outputLine('Requesting Patch Details from gerrit.');
+		$this->outputLine('Requesting patch details from Gerrit.');
 		$package = $this->gerritService->getPatchTargetPackage($patchId);
 		$packageKey = $package->getPackageKey();
 		$packagePath = $package->getPackagePath();
@@ -155,8 +155,8 @@ code or documentation to the Neos project.\n");
 
 	protected function setupAccessToken() {
 		if ((string)Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken') === '') {
-			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>");
-			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your gitHub access token (will not be displayed): ');
+			$this->outputLine("In order to perform actions on GitHub, you have to configure an access token. \nThis can be done on <u>https://github.com/settings/tokens/new.</u>. \nNote that this wizard only needs the 'public_repo' scope.");
+			$gitHubAccessToken = $this->output->askHiddenResponse('Please enter your GitHub access token (will not be displayed): ');
 			$this->gitHubSettings = Arrays::setValueByPath($this->gitHubSettings, 'contributor.accessToken', $gitHubAccessToken);
 		}
 
@@ -182,7 +182,7 @@ code or documentation to the Neos project.\n");
 				$this->setupRemotes($collectionName);
 				return;
 			} else {
-				$this->outputLine(sprintf('A fork of %s was configured, but was not found in your github account.', $collectionName));
+				$this->outputLine(sprintf('A fork of %s was configured, but was not found in your GitHub account.', $collectionName));
 			}
 		}
 
@@ -192,7 +192,7 @@ code or documentation to the Neos project.\n");
 		$this->outputLine(sprintf("\n<b>Setup %s Development Repository</b>", ucfirst($collectionName)));
 
 		if ($this->output->askConfirmation(sprintf('Do you already have a fork of the %s Development Collection? (y/N): ', ucfirst($collectionName)), FALSE)) {
-			$contributorRepositoryName = $this->output->ask('Please provide the name of your fork: ');
+			$contributorRepositoryName = $this->output->ask('Please provide the name of your fork (without your username): ');
 			if(!$this->gitHubService->checkRepositoryExists($contributorRepositoryName)) {
 				$this->outputLine(sprintf('<error>The fork %s was not found in your repository. Please start again</error>', $contributorRepositoryName));
 			}
