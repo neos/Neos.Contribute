@@ -104,6 +104,7 @@ code or documentation to the Neos Project.\n");
 		$package = $this->gerritService->getPatchTargetPackage($patchId);
 		$packageKey = $package->getPackageKey();
 		$packagePath = $package->getPackagePath();
+		$collectionPath = dirname($packagePath);
 
 		$this->outputLine(sprintf('Determined <b>%s</b> as the target package key for this change.', $packageKey));
 
@@ -112,16 +113,16 @@ code or documentation to the Neos Project.\n");
 
 		$this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $packageKey));
 
-		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --check %s', $packageKey, $patchPathAndFileName), $packagePath));
-		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --stat %s', $packageKey, $patchPathAndFileName), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --check %s', $packageKey, $patchPathAndFileName), $collectionPath));
+		$this->output($this->executeGitCommand(sprintf('git apply --directory %s --stat %s', $packageKey, $patchPathAndFileName), $collectionPath));
 
 		if(!$this->output->askConfirmation("\nWould you like to apply this patch? (Y/n): ", TRUE)) {
 			return;
 		}
 
-		$this->output($this->executeGitCommand(sprintf('git fetch upstream master'), $packagePath));
-		$this->output($this->executeGitCommand(sprintf('git checkout -b %s upstream/master', $patchId), $packagePath));
-		$this->output($this->executeGitCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git fetch upstream master'), $collectionPath));
+		$this->output($this->executeGitCommand(sprintf('git checkout -b %s upstream/master', $patchId), $collectionPath));
+		$this->output($this->executeGitCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $collectionPath));
 		$this->outputLine(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
 
 		if(!$this->output->askConfirmation("\nWould you like to push the change to your repository and create a pull request? (Y/n)", TRUE)) {
@@ -129,10 +130,10 @@ code or documentation to the Neos Project.\n");
 		}
 
 		$remoteRepository = $this->getGitRemoteRepositoryOfDirectory($packagePath);
-		$this->output($this->executeGitCommand(sprintf('git push origin %s', $patchId), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git push origin %s', $patchId), $collectionPath));
 		$this->createPullRequest($remoteRepository, $patchId);
 
-		$this->output($this->executeGitCommand(sprintf('git checkout master'), $packagePath));
+		$this->output($this->executeGitCommand(sprintf('git checkout master'), $collectionPath));
 	}
 
 
@@ -245,7 +246,6 @@ code or documentation to the Neos Project.\n");
 	}
 
 
-
 	protected function saveUserSettings() {
 		$frameworkConfiguration = $this->configurationSource->load(FLOW_PATH_CONFIGURATION . ConfigurationManager::CONFIGURATION_TYPE_SETTINGS);
 		$frameworkConfiguration = Arrays::setValueByPath($frameworkConfiguration, 'Neos.Contribute.gitHub', $this->gitHubSettings);
@@ -272,7 +272,10 @@ code or documentation to the Neos Project.\n");
 	 */
 	protected function executeGitCommand($command, $workingDirectory, $force = FALSE) {
 		$cwd = getcwd();
-		chdir($workingDirectory);
+		if (@chdir($workingDirectory) === FALSE) {
+			$this->outputLine(sprintf('<error>Directory "%s" does not exist, maybe your git remotes are not configured correctly, try to run ./flow github:setup</error>\n', $workingDirectory));
+			$this->sendAndExit(1);
+		}
 
 		$this->outputLine(sprintf("<b>GIT</b> [%s] %s", $workingDirectory, $command));
 
