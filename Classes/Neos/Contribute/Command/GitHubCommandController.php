@@ -241,7 +241,7 @@ code or documentation to the Neos Project.\n");
 		$this->executeGitCommand('git remote add origin ' . $sshUrl , $packageCollectionPath);
 		$this->executeGitCommand('git remote rm upstream', $packageCollectionPath, TRUE);
 		$this->executeGitCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $originRepositoryName), $packageCollectionPath);
-		$this->executeGitCommand('git config --add remote.upstream.fetch \'+refs/pull/*/head:refs/remotes/upstream/pr/*\'', $packageCollectionPath);
+		$this->executeGitCommand('git config --add remote.upstream.fetch +refs/pull/*/head:refs/remotes/upstream/pr/*', $packageCollectionPath);
 	}
 
 
