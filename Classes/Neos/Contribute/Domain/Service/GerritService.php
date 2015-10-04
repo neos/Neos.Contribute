@@ -99,6 +99,16 @@ class GerritService
      * @return array
      * @throws ParseErrorException
      */
+    public function getChangeDetails($patchId)
+    {
+        return $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, ''));
+    }
+
+    /**
+     * @param string $patchId
+     * @return array
+     * @throws ParseErrorException
+     */
     public function getCommitDetails($patchId)
     {
         return $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'revisions/current/commit'));

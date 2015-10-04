@@ -84,20 +84,19 @@ code or documentation to the Neos Project.\n");
     }
 
     /**
-     * Transfers a gerrit patch to a github pull request.
+     * Transfers a Gerrit patch to a Github pull request.
      *
-     * @param integer $patchId The gerrit patchset id
+     * @param integer $patchId The Gerrit Change-ID
      * @return void
      */
-    public function createPullRequestFromGerritCommand($patchId)
+    public function applyGerritChangeCommand($patchId)
     {
-        try {
-            $this->gitHubService->authenticate();
-        } catch (InvalidConfigurationException $e) {
-            $this->outputLine('<error>It was not possible to authenticate with GitHub.</error>');
-            $this->outputLine('Please run <b>./flow github:setup</b> first');
-        }
+        $this->output->ask("Make sure your development collection is set up correctly and that the master branch is clean and synced with upstream master before continuing.\nAlso make sure \"php-cs-fixer\" is installed globally.\n\nPress any key to continue.");
 
+        $this->outputLine('');
+        $this->outputLine('If anything goes wrong, go to the development collection and checkout a clean master branch.');
+
+        $this->outputLine('');
         $this->outputLine('Requesting patch details from Gerrit.');
         $package = $this->gerritService->getPatchTargetPackage($patchId);
         $packageKey = $package->getPackageKey();
@@ -106,34 +105,77 @@ code or documentation to the Neos Project.\n");
 
         $this->outputLine(sprintf('Determined <b>%s</b> as the target package key for this change.', $packageKey));
 
+        $commitDetails = $this->gerritService->getCommitDetails($patchId);
+
+        $oldParentCommitId = $commitDetails['parents'][0]['commit'];
+        $newParentCommitId = trim($this->executeCommand(sprintf('git log --grep=%s --pretty=format:%%H', $oldParentCommitId), $collectionPath));
+        if (!$newParentCommitId) {
+            $this->outputLine('<error>Unable to find old parent commit ID for change in development collection.</error>');
+            return;
+        }
+        $this->outputLine(sprintf('<success>Found old parent commit ID for change in development collection.</success>', $packageKey));
+
+
+        $cleanRepository = trim($this->executeCommand('git status --porcelain', $collectionPath));
+        if ($cleanRepository) {
+            $this->outputLine(sprintf('<error>Development collection "%s" not clean.</error>', $collectionPath));
+            return;
+        }
+
+        $this->outputLine('');
+        $this->outputLine('Creating new branch for change.');
+        $this->executeCommand('git checkout master', $collectionPath);
+        $this->executeCommand('git pull', $collectionPath);
+        $this->executeCommand(sprintf('git branch -f gerrit-%s', $patchId), $collectionPath);
+        $this->executeCommand(sprintf('git checkout gerrit-%s', $patchId), $collectionPath);
+        $this->executeCommand(sprintf('git reset --hard %s', $newParentCommitId), $collectionPath);
+        $this->outputLine('<success>Successfully created new branch for change.</success>');
+
+        $this->outputLine('');
+        $this->outputLine('Fetching change from Gerrit.');
         $patchPathAndFileName = $this->gerritService->getPatchFromGerrit($patchId);
-        $this->outputLine('Successfully fetched changeset from gerrit.');
+        $this->outputLine('<success>Successfully fetched change from Gerrit.</success>');
 
         $this->outputLine(sprintf('The following changes will be applied to package <b>%s</b>', $packageKey));
+        $this->output($this->executeCommand(sprintf('git apply --directory %s --check %s', $packageKey, $patchPathAndFileName), $collectionPath));
+        $this->output($this->executeCommand(sprintf('git apply --directory %s --stat %s', $packageKey, $patchPathAndFileName), $collectionPath));
 
-        $this->output($this->executeGitCommand(sprintf('git apply --directory %s --check %s', $packageKey, $patchPathAndFileName), $collectionPath));
-        $this->output($this->executeGitCommand(sprintf('git apply --directory %s --stat %s', $packageKey, $patchPathAndFileName), $collectionPath));
+        $this->outputLine('');
+        $this->outputLine('Applying change in new branch.');
+        $this->output($this->executeCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $collectionPath));
+        $this->outputLine(sprintf('<success>Successfully applied patch %1$s in branch "gerrit-%1$s"</success>', $patchId));
 
-        if (!$this->output->askConfirmation("\nWould you like to apply this patch? (Y/n): ", true)) {
-            return;
+        $this->outputLine('');
+        $this->outputLine(sprintf('<b>Converting change to PSR-2</b>', $patchId));
+        $modifiedFiles = array_filter(explode(PHP_EOL, $this->executeCommand('git diff HEAD~1 --name-only', $collectionPath)));
+        $this->executeCommand('git reset --soft HEAD~1', $collectionPath);
+        foreach ($modifiedFiles as $modifiedFile) {
+            if (pathinfo($modifiedFile, PATHINFO_EXTENSION) === 'php') {
+                $this->output($this->executeCommand(sprintf('php-cs-fixer fix --level=psr2 %s', $modifiedFile), $collectionPath, true));
+            }
         }
 
-        $this->output($this->executeGitCommand(sprintf('git fetch upstream master'), $collectionPath));
-        $this->output($this->executeGitCommand(sprintf('git checkout -b %s upstream/master', $patchId), $collectionPath));
-        $this->output($this->executeGitCommand(sprintf('git am --directory %s %s', $packageKey, $patchPathAndFileName), $collectionPath));
-        $this->outputLine(sprintf('<success>Successfully Applied patch %s</success>', $patchId));
+        $this->outputLine('');
+        $this->outputLine(sprintf('<b>Stashing change, resetting branch top master branch tip and applying change</b>', $patchId));
+        $this->executeCommand('git stash', $collectionPath);
+        $this->executeCommand('git reset --hard master', $collectionPath);
+        $stashApplyingOutput = trim($this->executeCommand('git stash pop', $collectionPath, true));
 
-        if (!$this->output->askConfirmation("\nWould you like to push the change to your repository and create a pull request? (Y/n)", true)) {
-            return;
+        if (strpos($stashApplyingOutput, 'CONFLICT') !== -1) {
+            $this->output('<error>' . $stashApplyingOutput . '</error>');
+            $this->outputLine('');
+            $this->outputLine('');
+            $this->outputLine('<success>Change applied with <error>conflicts</error>.</success>');
+            $this->outputLine('');
+            $this->outputLine(sprintf('<b>Go to "%s" to fix the conflicts and push the new branch "gerrit-%s" to your personal fork and create a new pull request from it.</b>', $collectionPath, $patchId));
+        } else {
+            $this->outputLine('');
+            $this->outputLine('');
+            $this->outputLine('<success>Change applied on master <b>without</b> conflicts.</success>');
+            $this->outputLine('');
+            $this->outputLine(sprintf('<b>Go to "%s" to push the new branch "gerrit-%s" to your personal fork and create a new pull request from it.</b>', $collectionPath, $patchId));
         }
-
-        $remoteRepository = $this->getGitRemoteRepositoryOfDirectory($packagePath);
-        $this->output($this->executeGitCommand(sprintf('git push origin %s', $patchId), $collectionPath));
-        $this->createPullRequest($remoteRepository, $patchId);
-
-        $this->output($this->executeGitCommand(sprintf('git checkout master'), $collectionPath));
     }
-
 
     /**
      * Create a pull request for the given patch
@@ -243,11 +285,11 @@ code or documentation to the Neos Project.\n");
         $contributorRepositoryName = (string) Arrays::getValueByPath($this->gitHubSettings, sprintf('contributor.repositories.%s.name', $collectionName));
         $sshUrl = $this->gitHubService->buildSSHUrlForRepository($contributorRepositoryName);
 
-        $this->executeGitCommand('git remote rm origin', $packageCollectionPath, true);
-        $this->executeGitCommand('git remote add origin ' . $sshUrl, $packageCollectionPath);
-        $this->executeGitCommand('git remote rm upstream', $packageCollectionPath, true);
-        $this->executeGitCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $originRepositoryName), $packageCollectionPath);
-        $this->executeGitCommand('git config --add remote.upstream.fetch +refs/pull/*/head:refs/remotes/upstream/pr/*', $packageCollectionPath);
+        $this->executeCommand('git remote rm origin', $packageCollectionPath, true);
+        $this->executeCommand('git remote add origin ' . $sshUrl, $packageCollectionPath);
+        $this->executeCommand('git remote rm upstream', $packageCollectionPath, true);
+        $this->executeCommand(sprintf('git remote add upstream git://github.com/%s/%s.git', $this->gitHubSettings['origin']['organization'], $originRepositoryName), $packageCollectionPath);
+        $this->executeCommand('git config --add remote.upstream.fetch +refs/pull/*/head:refs/remotes/upstream/pr/*', $packageCollectionPath);
     }
 
     /**
@@ -266,7 +308,7 @@ code or documentation to the Neos Project.\n");
      */
     protected function getGitRemoteRepositoryOfDirectory($directoryPath)
     {
-        $remoteInfo = $this->executeGitCommand('git remote show origin', $directoryPath);
+        $remoteInfo = $this->executeCommand('git remote show origin', $directoryPath);
         preg_match('/Fetch.*(flow-development-collection|neos-development-collection)\.git/', $remoteInfo, $matches);
         return $matches[1];
     }
@@ -277,7 +319,7 @@ code or documentation to the Neos Project.\n");
      * @param boolean $force
      * @return string
      */
-    protected function executeGitCommand($command, $workingDirectory, $force = false)
+    protected function executeCommand($command, $workingDirectory, $force = false)
     {
         $cwd = getcwd();
         if (@chdir($workingDirectory) === false) {
@@ -285,7 +327,7 @@ code or documentation to the Neos Project.\n");
             $this->sendAndExit(1);
         }
 
-        $this->outputLine(sprintf('<b>GIT</b> [%s] %s', $workingDirectory, $command));
+        $this->outputLine(sprintf('» [%s] %s', $workingDirectory, $command));
 
         exec($command . ' 2>&1', $output, $returnValue);
         chdir($cwd);
