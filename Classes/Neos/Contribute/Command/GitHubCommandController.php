@@ -91,7 +91,7 @@ code or documentation to the Neos Project.\n");
      */
     public function applyGerritChangeCommand($patchId)
     {
-        $this->output->ask("Make sure your development collection is set up correctly and that the master branch is clean and synced with upstream master before continuing.\nAlso make sure \"php-cs-fixer\" is installed globally.\n\nPress any key to continue.");
+        $this->output->ask("Make sure your development collection is set up correctly and that the master branch is clean and synced with upstream master before continuing.\nAlso make sure <b>php-cs-fixer</b> is installed globally.\n\nPress any key to continue.");
 
         $this->outputLine('');
         $this->outputLine('If anything goes wrong, go to the development collection and checkout a clean master branch.');
@@ -114,7 +114,7 @@ code or documentation to the Neos Project.\n");
             return;
         }
         $this->outputLine(sprintf('<success>Found old parent commit ID for change in development collection.</success>', $packageKey));
-
+        $this->outputLine('');
 
         $cleanRepository = trim($this->executeCommand('git status --porcelain', $collectionPath));
         if ($cleanRepository) {
@@ -124,11 +124,11 @@ code or documentation to the Neos Project.\n");
 
         $this->outputLine('');
         $this->outputLine('Creating new branch for change.');
-        $this->executeCommand('git checkout master', $collectionPath);
-        $this->executeCommand('git pull', $collectionPath);
-        $this->executeCommand(sprintf('git branch -f gerrit-%s', $patchId), $collectionPath);
-        $this->executeCommand(sprintf('git checkout gerrit-%s', $patchId), $collectionPath);
-        $this->executeCommand(sprintf('git reset --hard %s', $newParentCommitId), $collectionPath);
+        $this->output($this->executeCommand('git checkout master', $collectionPath));
+        $this->output($this->executeCommand('git pull', $collectionPath));
+        $this->output($this->executeCommand(sprintf('git branch -f gerrit-%s', $patchId), $collectionPath));
+        $this->output($this->executeCommand(sprintf('git checkout gerrit-%s', $patchId), $collectionPath));
+        $this->output($this->executeCommand(sprintf('git reset --hard %s', $newParentCommitId), $collectionPath));
         $this->outputLine('<success>Successfully created new branch for change.</success>');
 
         $this->outputLine('');
@@ -161,19 +161,33 @@ code or documentation to the Neos Project.\n");
         $this->executeCommand('git reset --hard master', $collectionPath);
         $stashApplyingOutput = trim($this->executeCommand('git stash pop', $collectionPath, true));
 
+        $commitMessage = preg_replace('/\n\n\n/', "\n", preg_replace('/(Releases|Change-Id):.+/', '', $commitDetails['message']));
         if (strpos($stashApplyingOutput, 'CONFLICT') !== -1) {
             $this->output('<error>' . $stashApplyingOutput . '</error>');
             $this->outputLine('');
             $this->outputLine('');
             $this->outputLine('<success>Change applied with <error>conflicts</error>.</success>');
             $this->outputLine('');
-            $this->outputLine(sprintf('<b>Go to "%s" to fix the conflicts and push the new branch "gerrit-%s" to your personal fork and create a new pull request from it.</b>', $collectionPath, $patchId));
+            $this->outputLine('<b>Next steps:</b>');
+            $this->outputLine('');
+            $this->outputLine(sprintf('<b>1. Go to "%s" where the branch "gerrit-%s" is checked out with the changes applied.</b>', $collectionPath, $patchId));
+            $this->outputLine('');
+            $this->outputLine('<b>2. Fix the conflicts and create new commit with the following commit message:</b>');
+            $this->output($commitMessage);
+            $this->outputLine('');
+            $this->outputLine('<b>3. Push the new branch to your personal fork and create a new pull request from it.</b>');
         } else {
             $this->outputLine('');
             $this->outputLine('');
             $this->outputLine('<success>Change applied on master <b>without</b> conflicts.</success>');
             $this->outputLine('');
-            $this->outputLine(sprintf('<b>Go to "%s" to push the new branch "gerrit-%s" to your personal fork and create a new pull request from it.</b>', $collectionPath, $patchId));
+            $this->outputLine('<b>Next steps:</b>');
+            $this->outputLine('');
+            $this->outputLine(sprintf('<b>1. Go to "%s" where the branch "gerrit-%s" is checked out with the changes applied.</b>', $collectionPath, $patchId));
+            $this->outputLine('');
+            $this->outputLine('<b>2. Fix the conflicts and create new commit with the following commit message:</b>');
+            $this->outputLine('');
+            $this->outputLine('<b>3. Push the new branch to your personal fork and create a new pull request from it.</b>');
         }
     }
 
