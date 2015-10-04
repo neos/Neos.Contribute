@@ -31,97 +31,95 @@ use Guzzle\Http\Client;
 use TYPO3\Flow\Configuration\Exception\ParseErrorException;
 use TYPO3\Flow\Utility\Files;
 
-class GerritService {
+class GerritService
+{
 
-	/**
-	 * @Flow\inject
-	 * @var \TYPO3\Flow\Package\PackageManagerInterface
-	 */
-	protected $packageManager;
+    /**
+     * @Flow\Inject
+     * @var \TYPO3\Flow\Package\PackageManagerInterface
+     */
+    protected $packageManager;
 
+    /**
+     * @Flow\Inject
+     * @var \TYPO3\Flow\Utility\Environment
+     */
+    protected $environment;
 
-	/**
-	 * @Flow\inject
-	 * @var \TYPO3\Flow\Utility\Environment
-	 */
-	protected $environment;
+    /**
+     * @var string
+     */
+    protected $gerritApiPattern = 'https://review.typo3.org/changes/%s/%s';
 
+    /**
+     * Gets the patch as zip package from gerrit
+     *
+     * @param int $patchId
+     * @return bool|string
+     * @throws \TYPO3\Flow\Utility\Exception
+     */
+    public function getPatchFromGerrit($patchId)
+    {
+        $uri = sprintf($this->gerritApiPattern, $patchId, 'revisions/current/patch?zip');
+        $outputDirectory = Files::concatenatePaths([$this->environment->getPathToTemporaryDirectory(), 'GerritPatches']);
+        Files::createDirectoryRecursively($outputDirectory);
+        $outputZipFilePath = Files::concatenatePaths(array($outputDirectory, $patchId . '.zip'));
 
-	/**
-	 * @var string
-	 */
-	protected $gerritApiPattern = 'https://review.typo3.org/changes/%s/%s';
+        $httpClient = new Client();
+        $httpClient->get($uri)->setResponseBody($outputZipFilePath)->send();
 
+        $zip = new \ZipArchive();
+        $zip->open($outputZipFilePath);
+        $patchFile = $zip->getNameIndex(0);
+        $zip->extractTo($outputDirectory);
+        $zip->close();
+        Files::unlink($outputZipFilePath);
 
-	/**
-	 * Gets the patch as zip package from gerrit
-	 *
-	 * @param int $patchId
-	 * @return bool|string
-	 * @throws \TYPO3\Flow\Utility\Exception
-	 */
-	public function getPatchFromGerrit($patchId) {
-		$uri = sprintf($this->gerritApiPattern, $patchId, 'revisions/current/patch?zip');
-		$outputDirectory = Files::concatenatePaths(array($this->environment->getPathToTemporaryDirectory(), 'GerritPatches'));
-		Files::createDirectoryRecursively($outputDirectory);
-		$outputZipFilePath = Files::concatenatePaths(array($outputDirectory, $patchId . '.zip'));
+        return Files::concatenatePaths(array($outputDirectory, $patchFile));
+    }
 
-		$httpClient = new Client();
-		$httpClient->get($uri)->setResponseBody($outputZipFilePath)->send();
+    /**
+     * @param string $patchId
+     * @return \TYPO3\Flow\Package\PackageInterface
+     */
+    public function getPatchTargetPackage($patchId)
+    {
+        $details = $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'detail'));
 
-		$zip = new \ZipArchive();
-		$zip->open($outputZipFilePath);
-		$patchFile = $zip->getNameIndex(0);
-		$zip->extractTo($outputDirectory);
-		$zip->close();
-		Files::unlink($outputZipFilePath);
+        $projectParts = explode('/', $details['project']);
+        $packageName = $projectParts[1];
 
-		return Files::concatenatePaths(array($outputDirectory, $patchFile));
-	}
+        $package = $this->packageManager->getPackage($packageName);
 
+        return $package;
+    }
 
+    /**
+     * @param string $patchId
+     * @return array
+     * @throws ParseErrorException
+     */
+    public function getCommitDetails($patchId)
+    {
+        return $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'revisions/current/commit'));
+    }
 
-	/**
-	 * @param $patchId
-	 * @return \TYPO3\Flow\Package\PackageInterface
-	 */
-	public function getPatchTargetPackage($patchId) {
-		$details = $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'detail'));
+    /**
+     * @param string $url
+     * @return array
+     * @throws ParseErrorException
+     */
+    protected function requestGerritAPI($url)
+    {
+        $httpClient = new Client();
+        $responseText = $httpClient->get($url)->send()->getBody(true);
+        $responseText = substr($responseText, 4); // Remove buggy characters in output
+        $responseData = json_decode($responseText, true);
 
-		$projectParts = explode('/', $details['project']);
-		$packageName = $projectParts[1];
+        if ($responseData == false) {
+            throw new ParseErrorException('The response data could not be parsed.', 1439716592);
+        }
 
-		$package = $this->packageManager->getPackage($packageName);
-
-		return $package;
-	}
-
-
-	/**
-	 * @param $patchId
-	 * @return array
-	 * @throws ParseErrorException
-	 */
-	public function getCommitDetails($patchId) {
-		return $this->requestGerritAPI(sprintf($this->gerritApiPattern, $patchId, 'revisions/current/commit'));
-	}
-
-
-	/**
-	 * @param $url
-	 * @return array
-	 * @throws ParseErrorException
-	 */
-	protected function requestGerritAPI($url) {
-		$httpClient = new Client();
-		$responseText = $httpClient->get($url)->send()->getBody(TRUE);
-		$responseText = substr($responseText, 4); // Remove buggy characters in output
-		$responseData = json_decode($responseText, TRUE);
-
-		if ($responseData == FALSE) {
-			throw new ParseErrorException('The response data could not be parsed.', 1439716592);
-		}
-
-		return $responseData;
-	}
+        return $responseData;
+    }
 }

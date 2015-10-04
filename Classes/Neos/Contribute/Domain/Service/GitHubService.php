@@ -32,156 +32,156 @@ use TYPO3\Flow\Configuration\Exception\InvalidConfigurationException;
 use Github\Exception\RuntimeException;
 use TYPO3\Flow\Utility\Arrays;
 
-class GitHubService {
+class GitHubService
+{
+    /**
+    * @Flow\Inject(setting="gitHub")
+    */
+    protected $gitHubSettings;
 
+    /**
+     * @var GitHubClient
+     */
+    protected $gitHubClient;
 
-	/**
-	* @Flow\Inject(setting="gitHub")
-	*/
-	protected $gitHubSettings;
+    /**
+     * @var array
+     */
+    protected $repositoryConfigurationCollection = null;
 
+    /**
+     * @var string
+     */
+    protected $currentUserLogin = '';
 
-	/**
-	 * @var GitHubClient
-	 */
-	protected $gitHubClient;
+    /**
+     * @return void
+     */
+    public function initializeObject()
+    {
+        $this->gitHubClient = new GithubClient();
+    }
 
+    /**
+     * @return void
+     * @throws InvalidConfigurationException
+     */
+    public function authenticate()
+    {
+        $gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken');
 
-	/**
-	 * @var array
-	 */
-	protected $repositoryConfigurationCollection = NULL;
+        if (!$gitHubAccessToken) {
+            throw new InvalidConfigurationException('The GitHub access token was not configured.', 1439627205);
+        }
 
+        $this->gitHubClient->authenticate($gitHubAccessToken, GithubClient::AUTH_HTTP_TOKEN);
 
-	/**
-	 * @var string
-	 */
-	protected $currentUserLogin = '';
+        try {
+            $userDetails = $this->gitHubClient->currentUser()->show();
+            $this->currentUserLogin = $userDetails['login'];
+        } catch (RuntimeException $exception) {
+            throw new InvalidConfigurationException('It was not possible to authenticate to GitHub: ' . $exception->getMessage(), $exception->getCode());
+        }
+    }
 
+    /**
+     * @param string $repositoryName
+     * @param string $branchName
+     * @param string $commitTitle
+     * @param string $commitBody
+     * @return array
+     * @throws InvalidConfigurationException
+     * @throws \Github\Exception\MissingArgumentException
+     */
+    public function createPullRequest($repositoryName, $branchName, $commitTitle, $commitBody)
+    {
+        $organization = (string) Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
 
-	public function initializeObject() {
-		$this->gitHubClient = new GithubClient();
-	}
+        $this->authenticate();
 
+        $params = array(
+            'title' => $commitTitle,
+            'head' => sprintf('%s:%s', $this->currentUserLogin, $branchName),
+            'body' => $commitBody,
+            'base' => 'master'
+        );
 
-	/**
-	 * @throws InvalidConfigurationException
-	 */
-	public function authenticate() {
-		$gitHubAccessToken = (string) Arrays::getValueByPath($this->gitHubSettings, 'contributor.accessToken');
+        return $this->gitHubClient->pullRequests()->create($organization, $repositoryName, $params);
+    }
 
-		if(!$gitHubAccessToken) {
-			throw new InvalidConfigurationException('The GitHub access token was not configured.', 1439627205);
-		}
+    /**
+     * @param string $organization
+     * @param string $repositoryName
+     * @return \Guzzle\Http\EntityBodyInterface|mixed|string
+     */
+    public function forkRepository($organization, $repositoryName)
+    {
+        $this->authenticate();
+        return $this->gitHubClient->repo()->forks()->create($organization, $repositoryName);
+    }
 
-		$this->gitHubClient->authenticate($gitHubAccessToken, GithubClient::AUTH_HTTP_TOKEN);
+    /**
+     * @param string $repositoryName
+     * @return bool
+     */
+    public function checkRepositoryExists($repositoryName)
+    {
+        return count($this->getRepositoryConfiguration($repositoryName)) ? true : false;
+    }
 
-		try {
-			$userDetails = $this->gitHubClient->currentUser()->show();
-			$this->currentUserLogin = $userDetails['login'];
-		} catch (RuntimeException $exception) {
-			throw new InvalidConfigurationException('It was not possible to authenticate to GitHub: ' . $exception->getMessage(), $exception->getCode());
-		}
-	}
+    /**
+     * @param string $repository
+     * @param string $key
+     * @return mixed
+     */
+    public function getRepositoryConfigurationProperty($repository, $key)
+    {
+        $repositoryConfiguration = $this->getRepositoryConfiguration($repository);
+        return Arrays::getValueByPath($repositoryConfiguration, $key);
+    }
 
+    /**
+     * Builds the ssh url for a given repository
+     *
+     * @param string $repositoryName
+     * @return string
+     * @throws InvalidConfigurationException
+     */
+    public function buildSSHUrlForRepository($repositoryName)
+    {
+        $this->authenticate();
+        return sprintf('git@github.com:%s/%s.git', $this->currentUserLogin, $repositoryName);
+    }
 
-	/**
-	 * @param $repositoryName
-	 * @param $branchName
-	 * @param $commitTitle
-	 * @param $commitBody
-	 * @return array
-	 * @throws InvalidConfigurationException
-	 * @throws \Github\Exception\MissingArgumentException
-	 */
-	public function createPullRequest($repositoryName, $branchName, $commitTitle, $commitBody) {
-		$organization = (string) Arrays::getValueByPath($this->gitHubSettings, 'origin.organization');
+    /**
+     * @param string $repositoryName
+     * @return array
+     * @throws InvalidConfigurationException
+     */
+    public function getRepositoryConfiguration($repositoryName)
+    {
+        $this->authenticate();
 
-		$this->authenticate();
+        if ($this->repositoryConfigurationCollection === null) {
+            $this->repositoryConfigurationCollection = $this->gitHubClient->currentUser()->repositories();
+        }
 
-		$params = array(
-			'title' => $commitTitle,
-			'head' => sprintf('%s:%s', $this->currentUserLogin, $branchName),
-			'body' => $commitBody,
-			'base' => 'master'
-		);
+        foreach ($this->repositoryConfigurationCollection as $repository) {
+            if ($repository['name'] == $repositoryName) {
+                return $repository;
+            }
+        }
 
-		return $this->gitHubClient->pullRequests()->create($organization, $repositoryName, $params);
-	}
+        return array();
+    }
 
-
-	/**
-	 * @param string $organization
-	 * @param string $repositoryName
-	 * @return \Guzzle\Http\EntityBodyInterface|mixed|string
-	 */
-	public function forkRepository($organization, $repositoryName) {
-		$this->authenticate();
-		return $this->gitHubClient->repo()->forks()->create($organization, $repositoryName);
-	}
-
-
-	/**
-	 * @param $repositoryName
-	 * @return bool
-	 */
-	public function checkRepositoryExists($repositoryName) {
-		return count($this->getRepositoryConfiguration($repositoryName)) ? TRUE : FALSE;
-	}
-
-
-	/**
-	 * @param $repository
-	 * @param $key
-	 * @return mixed
-	 */
-	public function getRepositoryConfigurationProperty($repository, $key) {
-		$repositoryConfiguration = $this->getRepositoryConfiguration($repository);
-		return Arrays::getValueByPath($repositoryConfiguration, $key);
-	}
-
-
-	/**
-	 * Builds the ssh url for a given repository
-	 *
-	 * @param $repositoryName
-	 * @return string
-	 * @throws InvalidConfigurationException
-	 */
-	public function buildSSHUrlForRepository($repositoryName) {
-		$this->authenticate();
-		return sprintf('git@github.com:%s/%s.git', $this->currentUserLogin, $repositoryName);
-	}
-
-
-	/**
-	 * @param $repositoryName
-	 * @return array
-	 * @throws InvalidConfigurationException
-	 */
-	public function getRepositoryConfiguration($repositoryName) {
-		$this->authenticate();
-
-		if($this->repositoryConfigurationCollection === NULL) {
-			$this->repositoryConfigurationCollection = $this->gitHubClient->currentUser()->repositories();
-		}
-
-		foreach($this->repositoryConfigurationCollection as $repository) {
-			if($repository['name'] == $repositoryName) {
-				return $repository;
-			}
-		}
-
-		return array();
-	}
-
-
-	/**
-	 * @param mixed $gitHubSettings
-	 * @return $this
-	 */
-	public function setGitHubSettings($gitHubSettings) {
-		$this->gitHubSettings = $gitHubSettings;
-		return $this;
-	}
+    /**
+     * @param mixed $gitHubSettings
+     * @return $this
+     */
+    public function setGitHubSettings($gitHubSettings)
+    {
+        $this->gitHubSettings = $gitHubSettings;
+        return $this;
+    }
 }
