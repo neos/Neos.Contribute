@@ -1,28 +1,32 @@
 ### Setup your configuration
 
-The setup wizard interactively configures your flow and neos forks and will also create the forks for you if needed. 
-It further renames the original remotes to "upstream" and adds your fork as remote with name "origin".  
+The setup wizard interactively configures your flow and neos forks and will also create the forks for you if needed.
+It further renames the original remotes to "upstream" and adds your fork as remote with name "origin".
 
 	./flow github:setup
 
 
-### Transfer a gerrit change to github
+### Transfer a Gerrit change to Github
 
-The command 
+The command
 
-	./flow github:createPullRequestFromGerrit <gerritPatchId>
+	./flow github:applyGerritChange <gerritPatchId>
 
-transfers a gerrit patch to a github pull request. In detail it does the following steps:
+transfers a Gerrit patch to a your development collection in a new branch. In detail it does the following steps:
 
-1. Pull the change as patch from gerrit
-2. Create a new branch for that patch from upstream/master
-3. Patch the code and create a new commit
-4. Push the commit to your fork on github
-5. Create a pull request
-6. Switch local repository back to master
+1. Pull the change as patch from Gerrit
+2. Create a new branch for that patch
+3. Applies the patch
+4. Converts the patch to PSR-2 and adjust license header
+5. Rebases patch onto latest master
 
+If there are conflicts, they have to be resolved manually.
 
-#### Manually transfer a gerrit change to github
+Commit the modified files with the provided commit message.
+
+Then use that branch to create a new pull request from.
+
+#### Manually transfer a Gerrit change to Github
 
 These are the steps you have to do to manually move a Gerrit patch to Github. The example commands move a patch for the package TYPO3.TYPO3CR. If you have changes that are stacked on each other, repeat step 6 until all needed changes have been applied, then continue.
 
@@ -36,9 +40,9 @@ These are the steps you have to do to manually move a Gerrit patch to Github. Th
    `git fetch http://review.typo3.org/Packages/TYPO3.TYPO3CR refs/changes/xx/yyyyy/z && git format-patch -1 -k --stdout FETCH_HEAD | git am -k --directory TYPO3.TYPO3CR`
 
    Mind the added `-k` for the `format-patch` and `am` git commands, it makes sure tags like `[TASK]` are kept.
-   
+
    If you are patching a repository that is not a "development collection", you can leave out `--directory`.
-		
+
 7. Check the result (you may need to amend the commit to fix the [<TAG>] used in the subject line if you left
    out the `-k` option)
 8. Push the changes to origin/branchName
