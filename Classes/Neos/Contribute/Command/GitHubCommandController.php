@@ -1,6 +1,8 @@
 <?php
 namespace Neos\Contribute\Command;
 
+require(FLOW_PATH_FLOW . 'Scripts/Migrations/Tools.php');
+
 /*                                                                        *
  * This script belongs to the TYPO3 Flow package "Neos.Contribute".       *
  *                                                                        *
@@ -9,8 +11,8 @@ namespace Neos\Contribute\Command;
 use Github\Client as GitHubClient;
 use Github\Exception\RuntimeException;
 use TYPO3\Flow\Annotations as Flow;
-use TYPO3\Flow\Composer\Exception\InvalidConfigurationException;
 use TYPO3\Flow\Configuration\ConfigurationManager;
+use TYPO3\Flow\Core\Migrations\Tools;
 use TYPO3\Flow\Utility\Arrays;
 use TYPO3\Flow\Utility\Files;
 
@@ -146,12 +148,21 @@ code or documentation to the Neos Project.\n");
         $this->outputLine(sprintf('<success>Successfully applied patch %1$s in branch "gerrit-%1$s"</success>', $patchId));
 
         $this->outputLine('');
-        $this->outputLine(sprintf('<b>Converting change to PSR-2</b>', $patchId));
+        $this->outputLine(sprintf('<b>Converting change to PSR-2 and updating license header</b>', $patchId));
         $modifiedFiles = array_filter(explode(PHP_EOL, $this->executeCommand('git diff HEAD~1 --name-only', $collectionPath)));
         $this->executeCommand('git reset --soft HEAD~1', $collectionPath);
         foreach ($modifiedFiles as $modifiedFile) {
             if (pathinfo($modifiedFile, PATHINFO_EXTENSION) === 'php') {
                 $this->output($this->executeCommand(sprintf('php-cs-fixer fix --level=psr2 %s', $modifiedFile), $collectionPath, true));
+                Tools::searchAndReplace('/\/\*{1}([\s\S]+?)(script belongs)([\s\S]+?)\*\//', '/*
+ * This file is part of the ' . $packageKey . ' package.
+ *
+ * (c) Contributors of the Neos Project - www.neos.io
+ *
+ * This package is Open Source Software. For the full copyright and license
+ * information, please view the LICENSE file which was distributed with this
+ * source code.
+ */', $collectionPath . DIRECTORY_SEPARATOR . $modifiedFile, true);
             }
         }
 
