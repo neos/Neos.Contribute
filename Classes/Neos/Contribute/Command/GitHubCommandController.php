@@ -80,7 +80,15 @@ code or documentation to the Neos Project.\n");
 
         $this->setupAccessToken();
         $this->setupFork('flow');
-        $this->setupFork('neos');
+        
+        // Only setup Neos if this is a Neos distribution
+        $neosCollectionPath = Files::concatenatePaths(array(
+            FLOW_PATH_PACKAGES,
+            (string)Arrays::getValueByPath($this->gitHubSettings, 'origin.repositories.neos.packageDirectory')
+        ));
+        if (is_dir($neosCollectionPath)) {
+            $this->setupFork('neos');
+        }
 
         $this->outputLine("\n<success>Everything is set up correctly.</success>");
     }
