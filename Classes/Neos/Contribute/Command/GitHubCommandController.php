@@ -1,7 +1,7 @@
 <?php
 namespace Neos\Contribute\Command;
 
-require(FLOW_PATH_FLOW . 'Scripts/Migrations/Tools.php');
+include_once(FLOW_PATH_FLOW . 'Scripts/Migrations/Tools.php');
 
 /*                                                                        *
  * This script belongs to the TYPO3 Flow package "Neos.Contribute".       *
