@@ -49,7 +49,7 @@ class GerritService
     /**
      * @var string
      */
-    protected $gerritApiPattern = 'https://review.typo3.org/changes/%s/%s';
+    protected $gerritApiPattern = 'http://gerrit.neos.io/changes/%s/%s';
 
     /**
      * Gets the patch as zip package from gerrit
