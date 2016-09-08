@@ -33,7 +33,7 @@ class GitHubCommandController extends \TYPO3\Flow\Cli\CommandController
     protected $configurationSource;
 
     /**
-     * @Flow\Inject(setting="gitHub")
+     * @Flow\InjectConfiguration(path="gitHub")
      */
     protected $gitHubSettings;
 
@@ -80,7 +80,7 @@ code or documentation to the Neos Project.\n");
 
         $this->setupAccessToken();
         $this->setupFork('flow');
-        
+
         // Only setup Neos if this is a Neos distribution
         $neosCollectionPath = Files::concatenatePaths(array(
             FLOW_PATH_PACKAGES,

@@ -35,7 +35,7 @@ use TYPO3\Flow\Utility\Arrays;
 class GitHubService
 {
     /**
-    * @Flow\Inject(setting="gitHub")
+    * @Flow\InjectConfiguration(path="gitHub")
     */
     protected $gitHubSettings;
 
